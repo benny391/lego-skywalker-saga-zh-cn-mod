@@ -1,0 +1,43 @@
+# Game archives and executables
+*.DAT
+*.dat
+*.exe
+*.dll
+*.ft2
+*.dds
+
+# Generated patches and packages
+*.gpatch
+*.zip
+*.7z
+*.rar
+
+# Extracted or generated game data
+extracted/
+phase3/
+runtime_phase3/
+all_han_inplace/
+all_han_inplace_roundtrip/
+surgical_dotfix/
+surgical_dotfix_all/
+ship_alias_fix/
+backups/
+package_staging/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+pydeps/
+
+# Local reports and previews
+*.png
+*.log
+
+# Editors and OS
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
+

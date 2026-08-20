@@ -1,0 +1,24 @@
+{
+  "modName": "LEGO Star Wars: The Skywalker Saga - Mainland Simplified Chinese Mod",
+  "version": "YYYY.MM.DD",
+  "gameDirectoryName": "LEGO Star Wars - The Skywalker Saga",
+  "gameExecutable": "LEGOSTARWARSSKYWALKERSAGA_DX11.exe",
+  "files": [
+    {
+      "name": "GAME.DAT",
+      "size": 0,
+      "sourceSha256": "OFFICIAL_GAME_DAT_SHA256",
+      "targetSha256": "MOD_GAME_DAT_SHA256",
+      "patch": "patches\\GAME.DAT.gpatch",
+      "patchSha256": "PATCH_SHA256"
+    },
+    {
+      "name": "GAME6.DAT",
+      "size": 0,
+      "sourceSha256": "OFFICIAL_GAME6_DAT_SHA256",
+      "targetSha256": "MOD_GAME6_DAT_SHA256",
+      "patch": "patches\\GAME6.DAT.gpatch",
+      "patchSha256": "PATCH_SHA256"
+    }
+  ]
+}
