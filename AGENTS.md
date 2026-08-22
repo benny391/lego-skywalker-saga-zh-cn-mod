@@ -7,19 +7,22 @@ as user-owned inputs. Never commit or redistribute them.
 
 ## Current accepted solution
 
-The accepted font solution is **Release atlas + index-only routing repair**.
+The accepted font solution is **Release atlas + index routing repair + one
+proven alias-slot migration**.
 
 - Use the visually stable Release `font_chinese_nxg.ft2` as the font input.
-- Preserve the DDS payload byte-for-byte. Its verified format is one
-  `DXT5`/BC3 atlas of `3628 x 3824` pixels with no mipmaps.
+- Preserve the Release atlas except for the single U+8907 alias slot described
+  below. Its verified format is one `DXT5`/BC3 atlas of `3628 x 3824` pixels
+  with no mipmaps.
 - Repair only the big-endian `m_charIdx.m_index` fields in the FT2 Unicode map.
 - Repack with the original Oodle chunk count, sizes, and boundaries.
 - Do not redraw the complete atlas and do not recompress texture chunks.
 
-The stable index-only build changes 53 deterministic routes. The generated FT2
-changes 65 bytes, all inside approved two-byte Unicode-map index fields. It
-leaves all DDS bytes unchanged and requires only two metadata-containing Oodle
-chunks to be recompressed.
+The stable index-only stage changes 53 deterministic routes. It changes 65
+bytes, all inside approved two-byte Unicode-map index fields, and leaves the DDS
+unchanged. The final migration restores 726 runtime `複` aliases to real `船`,
+routes 42 `龐` occurrences through U+8907, and redraws only glyph record 2631
+as `庞`.
 
 ## Why 53 routes move
 
@@ -87,6 +90,28 @@ Use `tools/ft2_v14.py`; do not restore the older parser.
 9. Never install while the game process is running. Keep the stable Release
    archive as the immediate rollback file.
 
+## Final ship-to-pang alias migration
+
+The corrected map routes real `船` from record 2459 to the uniquely recovered
+record 2403. This makes the earlier `船 -> 複` runtime workaround redundant.
+Run `tools/build_pang_alias_migration.py` only after the 53-route index repair:
+
+- require input text counts `船=0`, `複=726`, `龐=42`, `庞=0`;
+- restore the 726 `複` occurrences to `船`;
+- encode the 42 `龐` occurrences as runtime `複`;
+- require U+8907 to map to record 2631 and `船` to map to record 2403;
+- require record 2631 to be `(194, 3024, 59, 54)`;
+- modify only the proven atlas safe box `(200, 3030)-(248, 3073)`;
+- require all changed FT2 bytes to be BC3 alpha bytes in the selected blocks;
+- preserve CSV byte length, FT2 metadata, the Unicode map, file size, and Oodle
+  chunk boundaries.
+
+The verified candidate changes 77 BC3 blocks and 314 FT2 bytes relative to the
+index-only font. Repacking changes Oodle chunks 339-342 without changing their
+stored sizes. The `船` path has been confirmed in game; the `庞` path has passed
+offline glyph and archive round-trip validation but has not yet been observed
+on an in-game screen by the tester.
+
 ## Rejected approaches
 
 Do not use these as the default or release path:
@@ -108,17 +133,11 @@ placeholders, format specifiers, tags, resource references, escape sequences,
 control characters, and CSV UTF-8 parseability. Run `localization_qa.py` before
 packaging.
 
-## Remaining limitation
+## Current coverage
 
-The final text needs 2956 unique Han characters. The stable font covers 2955 in
-Simplified Chinese. The only remaining Traditional glyph is `龐` (42 text
-occurrences): 22 in `庞达·巴巴/庞达`, 16 in `庞大`, three in `庞沃卡`, and one in
-`庞然大物`.
-
-There is no mapped or already-rendered `庞` glyph in the Release atlas, so this
-cannot be fixed by index routing. Keep `龐` unless the user explicitly accepts
-either a one-glyph texture edit or non-standard text substitutions. Do not
-silently rename proper nouns.
+The final text needs 2956 unique Han characters and all 2956 now have a
+Simplified display path. Do not reuse U+8907 for another character: it is the
+runtime alias for `庞`, including the proper names `庞达·巴巴` and `庞沃卡`.
 
 ## Repository hygiene
 
