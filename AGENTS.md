@@ -20,8 +20,8 @@ explicit runtime alias for 庞**.
 
 The stable index-only stage changes 53 deterministic routes. It changes 65
 bytes, all inside approved two-byte Unicode-map index fields, and leaves the DDS
-unchanged. In the final resource, all 726 `船` occurrences are literal U+8239
-and route to record 2403. The 42 semantic `庞` occurrences are encoded as the
+unchanged. Characters with native mappings use their literal Unicode codepoints
+and corrected routes. The 42 semantic `庞` occurrences are encoded as the
 otherwise-unused runtime codepoint U+8907 and displayed by record 2631, which is
 the only redrawn glyph slot.
 
@@ -99,9 +99,9 @@ audit.
 
 ## Final runtime encoding from first principles
 
-The final resource has no `船 -> 複` alias. The corrected Unicode map routes
-literal U+8239 `船` directly to the uniquely recovered record 2403. Only `庞`
-needs an alias because the FT2 Unicode table has no native U+5E9E entry.
+Characters with native FT2 mappings use their literal codepoints and corrected
+routes. Only `庞` needs an alias because the FT2 Unicode table has no native
+U+5E9E entry.
 
 After the 53-route index repair, produce the final runtime resources with these
 output invariants:
@@ -123,9 +123,9 @@ not part of the final design model.
 
 The verified final font changes 77 BC3 blocks and 314 FT2 bytes relative to the
 index-only font. Repacking changes Oodle chunks 339-342 without changing their
-stored sizes. The `船` path has been confirmed in game; the `庞` path has passed
-offline glyph and archive round-trip validation but has not yet been observed
-on an in-game screen by the tester.
+stored sizes. The corrected native mapping set has been confirmed in game; the
+`庞` path has passed offline glyph and archive round-trip validation but has not
+yet been observed on an in-game screen by the tester.
 
 ## Rejected approaches
 
