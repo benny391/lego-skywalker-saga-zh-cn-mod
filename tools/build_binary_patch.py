@@ -42,9 +42,14 @@ def main() -> None:
     run_start: int | None = None
     run_data = bytearray()
 
-    with args.source.open("rb") as old, args.target.open("rb") as new, gzip.open(
-        args.output, "wb", compresslevel=9
-    ) as patch:
+    with (
+        args.source.open("rb") as old,
+        args.target.open("rb") as new,
+        args.output.open("wb") as patch_file,
+        gzip.GzipFile(
+            filename="", mode="wb", fileobj=patch_file, compresslevel=9, mtime=0
+        ) as patch,
+    ):
         patch.write(MAGIC)
         patch.write(struct.pack("<Q", target_size))
 

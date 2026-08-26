@@ -251,8 +251,9 @@ def main() -> None:
         f"resource={item['path']} raw={len(raw)} chunks={len(original_chunks)} "
         f"allocation={item['compressed_size']} sha256={sha256(raw)}"
     )
+    dll = load_oodle(args.oodle_dll)
     stream, changed_count = make_stream(
-        load_oodle(args.oodle_dll),
+        dll,
         raw,
         original_chunks,
         args.compressor,
@@ -280,7 +281,7 @@ def main() -> None:
             last_packed = stream[position + 12 : position + 12 + packed_size]
             last_raw_size = raw_size
             position += 12 + packed_size
-        decompress_chunk(load_oodle(args.oodle_dll), last_packed, last_raw_size)
+        decompress_chunk(dll, last_packed, last_raw_size)
         print(f"padded={len(stream) - unpadded_size} final_size={len(stream)}")
 
     record_size_offset = (
@@ -303,9 +304,19 @@ def main() -> None:
     )
     if verified["compressed_size"] != len(stream):
         raise RuntimeError("Patched archive index did not reparse with the new size")
+    verified_chunks = read_original_chunks(
+        args.target, verified["offset"], verified["compressed_size"]
+    )
+    roundtrip = b"".join(
+        decompress_chunk(dll, packed, raw_size)
+        for packed, raw_size in verified_chunks
+    )
+    if roundtrip != raw:
+        raise RuntimeError("Patched resource failed full extraction round-trip")
     print(
         f"patched={args.target} stored_size={len(stream)} "
-        f"record_size_offset={record_size_offset}"
+        f"record_size_offset={record_size_offset} "
+        f"roundtrip_sha256={sha256(roundtrip)}"
     )
 
 

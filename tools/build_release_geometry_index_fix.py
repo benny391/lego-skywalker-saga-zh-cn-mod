@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import io
 import json
@@ -29,7 +30,18 @@ def digest(data: bytes) -> str:
 
 
 def main() -> None:
-    raw = BASE.read_bytes()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base", type=Path, default=BASE)
+    parser.add_argument("--audit", type=Path, default=AUDIT)
+    parser.add_argument("--output-root", type=Path, default=OUTPUT_ROOT)
+    parser.add_argument("--noto", type=Path, default=NOTO)
+    args = parser.parse_args()
+
+    output_path = args.output_root / "ui/font/localisation/font_chinese_nxg.ft2"
+    report_path = args.output_root / "index-fix-report.json"
+    preview_path = args.output_root / "index-fix-preview.png"
+
+    raw = args.base.read_bytes()
     dds_offset = raw.index(b"DDS ")
     records = parse_char_records(raw)
     map_offset, pairs = parse_unicode_map(raw)
@@ -37,7 +49,7 @@ def main() -> None:
         codepoint: map_offset + index * 4 for index, (codepoint, _slot) in enumerate(pairs)
     }
     mapping = dict(pairs)
-    audit = json.loads(AUDIT.read_text(encoding="utf-8"))
+    audit = json.loads(args.audit.read_text(encoding="utf-8"))
     routes = [
         route
         for route in audit["routes"]
@@ -71,12 +83,12 @@ def main() -> None:
     if any(position not in allowed_positions for position in changed_positions):
         raise ValueError("A byte outside the selected map indices changed")
 
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_bytes(output)
-    make_preview(raw, dds_offset, records, routes)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(output)
+    make_preview(raw, dds_offset, records, routes, preview_path, args.noto)
     report = {
-        "base": str(BASE),
-        "output": str(OUTPUT),
+        "base": str(args.base),
+        "output": str(output_path),
         "base_sha256": digest(raw),
         "output_sha256": digest(output),
         "dds_sha256": digest(raw[dds_offset:]),
@@ -88,14 +100,16 @@ def main() -> None:
         "excluded_ambiguous": ["U+4E00 一", "U+4E8C 二", "U+65E5 日"],
         "routes": routes,
     }
-    REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    report_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print(json.dumps({key: value for key, value in report.items() if key != "routes"}, ensure_ascii=False, indent=2))
 
 
-def make_preview(raw: bytes, dds_offset: int, records, routes) -> None:
+def make_preview(raw: bytes, dds_offset: int, records, routes, preview: Path, noto: Path) -> None:
     atlas = Image.open(io.BytesIO(raw[dds_offset:])).convert("RGBA")
-    font = ImageFont.truetype(str(NOTO), 38)
-    label_font = ImageFont.truetype(str(NOTO), 18)
+    font = ImageFont.truetype(str(noto), 38)
+    label_font = ImageFont.truetype(str(noto), 18)
     columns = 4
     cell_w, cell_h = 250, 126
     rows = (len(routes) + columns - 1) // columns
@@ -119,8 +133,8 @@ def make_preview(raw: bytes, dds_offset: int, records, routes) -> None:
         draw.text((left + 12, top + 8), f"{runtime}→{semantic}  {route['old_index']}→{route['new_index']}", font=label_font, fill=(240, 240, 240, 255))
         draw.text((left + 18, top + 102), "期望", font=label_font, fill=(170, 210, 255, 255))
         draw.text((left + 105, top + 102), "现有槽", font=label_font, fill=(170, 255, 190, 255))
-    PREVIEW.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(PREVIEW)
+    preview.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(preview)
 
 
 if __name__ == "__main__":

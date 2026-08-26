@@ -19,8 +19,11 @@
 
 ## 目录
 
+- `build_mod.py`：唯一的一键构建入口，自动执行审计、字体修复、回封、回读验证、差分补丁及安装包制作。
+- `build-config.example.json`：一键构建的路径配置示例。
 - `tools/`：分析、转换、字体、回封、补丁和 QA 脚本。
 - `installer-template/`：带版本哈希检查、备份和卸载功能的 Windows 安装器模板。
+- `licenses/`：构建产物需要附带的开源字体许可证。
 - 本地调查报告包含安装细节与版本哈希，因此不放入公开仓库。
 
 ## 环境
@@ -35,6 +38,49 @@
 ```powershell
 python -m pip install -r requirements.txt
 ```
+
+## 一键制作当前 Mod
+
+仓库的统一入口是 `build_mod.py`。它不会修改游戏安装目录，而是在独立工作目录复制官方 DAT 后完成以下阶段：
+
+1. 校验官方 `GAME.DAT`、`GAME6.DAT` 和三个稳定构建输入的大小及 SHA-256；
+2. 调用几何审计工具并强制检查 `3076/3073/3/0` 不变量；
+3. 调用纯索引修复工具并强制检查 53 条路由、65 个变化字节和 DDS 不变；
+4. 调用“船”到“庞”的别名槽迁移及本地化结构验证；
+5. 在官方 DAT 的副本中回封文本与字体，并将资源完整解压回读、逐字节比较；
+6. 校验生成 DAT 是否等于已验证的当前 Mod 哈希；
+7. 生成 `.gpatch` 差分补丁、安装器 manifest、校验和及最终 ZIP；
+8. 检查 ZIP 中不存在完整 DAT、EXE、DLL、FT2、CSV 或 DDS。
+
+首次使用：
+
+```powershell
+Copy-Item build-config.example.json build-config.json
+# 编辑 build-config.json 中的本机路径
+python build_mod.py --check-only
+python build_mod.py
+```
+
+重复构建同一工作目录和版本时，显式使用：
+
+```powershell
+python build_mod.py --clean
+```
+
+`--clean` 只会删除带有本工具专用标记的构建目录，并替换同版本的 ZIP/构建报告；不会删除或覆盖游戏目录中的文件。最终安装包输出到配置的 `outputDirectory`。
+
+### 必须自行提供的三个稳定输入
+
+出于版权原因，这三个文件不会提交到 GitHub，但当前 Mod 的构建离不开它们：
+
+- `stableRuntimeText`：上一稳定阶段的运行时 `text.csv`；
+- `stableReleaseFont`：经过游戏验证、尚未进行 53 路由修复的 Release FT2；
+- `releaseFontBuildReport`：生成该 Release 字体时的 `font-report.json`。
+
+示例配置把它们放在被 `.gitignore` 排除的 `inputs/` 下。脚本内置当前稳定版本的精确 SHA-256；输入不是已验证版本时会立即停止，不会尝试“差不多能用”的构建。官方 DAT 和 Oodle DLL 同样必须来自使用者自己的合法游戏副本。
+
+如果游戏目录当前已经安装了 Mod，可在私有的 `build-config.json` 中增加
+`officialGameDat` 和 `officialGame6Dat`，指向你保留的干净官方备份；构建脚本仍不会改动这些源文件。
 
 ## 数据目录约定
 

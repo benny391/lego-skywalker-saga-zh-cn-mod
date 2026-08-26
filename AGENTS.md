@@ -73,6 +73,12 @@ Use `tools/ft2_v14.py`; do not restore the older parser.
 
 ## Required build and validation order
 
+For a complete production build, use the repository-root `build_mod.py`
+orchestrator. Individual tools remain useful for investigation, but a release
+must not bypass the orchestrator's pinned input hashes, stage invariants,
+full-resource extraction round-trip, target archive hashes, or package-content
+audit.
+
 1. Produce or select the stable Release FT2 from legally extracted user data.
 2. Run `tools/audit_release_geometry_routes.py` against the Release builder's
    `all_han_inplace/font-report.json`.

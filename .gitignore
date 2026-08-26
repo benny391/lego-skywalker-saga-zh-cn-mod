@@ -23,6 +23,10 @@ surgical_dotfix_all/
 ship_alias_fix/
 backups/
 package_staging/
+inputs/
+build/
+dist/
+build-config.json
 
 # Python
 __pycache__/
@@ -40,4 +44,3 @@ pydeps/
 .vscode/
 Thumbs.db
 .DS_Store
-
