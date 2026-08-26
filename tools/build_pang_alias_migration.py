@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Retire the temporary ship alias and reuse its proven FT2 slot for 庞.
+"""Build the final runtime text/font layout with one dedicated alias for 庞.
 
-The accepted Release build encoded semantic 船 as runtime 複 and rendered 船
-in the U+8907 glyph slot.  The later FT2 v14 index audit recovered the real 船
-route, so this migration restores 船 in text, encodes semantic 庞 as runtime
-複, and redraws only the already-modified U+8907 slot as 庞.
+The final design stores 船 literally and routes it to its verified real glyph.
+Only semantic 庞 uses runtime U+8907/複 and glyph record 2631.  The current
+private input checkpoint still contains an obsolete 船-to-複 encoding, so this
+builder normalizes that input before emitting the final layout.
 """
 
 from __future__ import annotations
@@ -54,7 +54,9 @@ def build_text(source_path: Path, output_path: Path) -> dict[str, object]:
     }
     expected = {SHIP: 0, ALIAS: 726, TRAD_PANG: 42, SIMP_PANG: 0}
     if counts_before != expected:
-        raise ValueError(f"Unexpected migration input counts: {counts_before} != {expected}")
+        raise ValueError(
+            f"Unexpected compatibility-checkpoint counts: {counts_before} != {expected}"
+        )
 
     for row in rows[1:]:
         value = row[target_index]
@@ -80,7 +82,9 @@ def build_text(source_path: Path, output_path: Path) -> dict[str, object]:
     }
     expected_after = {SHIP: 726, ALIAS: 42, TRAD_PANG: 0, SIMP_PANG: 0}
     if counts_after != expected_after:
-        raise ValueError(f"Unexpected migration output counts: {counts_after} != {expected_after}")
+        raise ValueError(
+            f"Unexpected final-runtime counts: {counts_after} != {expected_after}"
+        )
     return {
         "source": str(source_path),
         "output": str(output_path),

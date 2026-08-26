@@ -192,6 +192,12 @@ def main() -> None:
         raise ValueError("Patched compressed size did not reparse correctly")
     if verified["size"] != len(raw):
         raise ValueError("Patched raw size did not reparse correctly")
+    with args.target.open("rb") as stream:
+        stream.seek(verified["offset"])
+        stored = stream.read(verified["compressed_size"])
+    roundtrip = decode_stream(stored, verified["size"])
+    if roundtrip != raw:
+        raise ValueError("Patched ZIPX resource failed full extraction round-trip")
     print(
         f"resource={item['path']} raw={len(raw)} stored={len(packed)} "
         f"original_allocation={original_allocation} "
@@ -201,7 +207,8 @@ def main() -> None:
         print(f"{key}={value}")
     print(
         f"patched={args.target} compressed_size_offset={compressed_size_offset} "
-        f"raw_size_offset={raw_size_offset}"
+        f"raw_size_offset={raw_size_offset} "
+        f"roundtrip_sha256={sha256(roundtrip)}"
     )
 
 

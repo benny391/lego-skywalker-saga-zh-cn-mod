@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 from collections import defaultdict
@@ -33,11 +34,17 @@ def intersection(
 
 
 def main() -> None:
-    raw = FONT.read_bytes()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--font", type=Path, default=FONT)
+    parser.add_argument("--build-report", type=Path, default=BUILD_REPORT)
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    args = parser.parse_args()
+
+    raw = args.font.read_bytes()
     records = parse_char_records(raw)
     _map_offset, pairs = parse_unicode_map(raw)
     mapping = dict(pairs)
-    report = json.loads(BUILD_REPORT.read_text(encoding="utf-8"))
+    report = json.loads(args.build_report.read_text(encoding="utf-8"))
     routes = []
     target_uses: dict[int, list[str]] = defaultdict(list)
 
@@ -120,7 +127,7 @@ def main() -> None:
         if len(values) > 1
     }
     summary = {
-        "font": str(FONT),
+        "font": str(args.font),
         "font_sha256": hashlib.sha256(raw).hexdigest().upper(),
         "assignment_count": len(routes),
         "unique_full_containment": sum(
@@ -132,7 +139,10 @@ def main() -> None:
         "target_record_collisions": len(collisions),
     }
     result = {"summary": summary, "collisions": collisions, "routes": routes}
-    OUTPUT.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 

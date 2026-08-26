@@ -8,7 +8,7 @@ as user-owned inputs. Never commit or redistribute them.
 ## Current accepted solution
 
 The accepted font solution is **Release atlas + index routing repair + one
-proven alias-slot migration**.
+explicit runtime alias for 庞**.
 
 - Use the visually stable Release `font_chinese_nxg.ft2` as the font input.
 - Preserve the Release atlas except for the single U+8907 alias slot described
@@ -20,9 +20,10 @@ proven alias-slot migration**.
 
 The stable index-only stage changes 53 deterministic routes. It changes 65
 bytes, all inside approved two-byte Unicode-map index fields, and leaves the DDS
-unchanged. The final migration restores 726 runtime `複` aliases to real `船`,
-routes 42 `龐` occurrences through U+8907, and redraws only glyph record 2631
-as `庞`.
+unchanged. Characters with native mappings use their literal Unicode codepoints
+and corrected routes. The 42 semantic `庞` occurrences are encoded as the
+otherwise-unused runtime codepoint U+8907 and displayed by record 2631, which is
+the only redrawn glyph slot.
 
 ## Why 53 routes move
 
@@ -73,6 +74,12 @@ Use `tools/ft2_v14.py`; do not restore the older parser.
 
 ## Required build and validation order
 
+For a complete production build, use the repository-root `build_mod.py`
+orchestrator. Individual tools remain useful for investigation, but a release
+must not bypass the orchestrator's pinned input hashes, stage invariants,
+full-resource extraction round-trip, target archive hashes, or package-content
+audit.
+
 1. Produce or select the stable Release FT2 from legally extracted user data.
 2. Run `tools/audit_release_geometry_routes.py` against the Release builder's
    `all_han_inplace/font-report.json`.
@@ -90,15 +97,17 @@ Use `tools/ft2_v14.py`; do not restore the older parser.
 9. Never install while the game process is running. Keep the stable Release
    archive as the immediate rollback file.
 
-## Final ship-to-pang alias migration
+## Final runtime encoding from first principles
 
-The corrected map routes real `船` from record 2459 to the uniquely recovered
-record 2403. This makes the earlier `船 -> 複` runtime workaround redundant.
-Run `tools/build_pang_alias_migration.py` only after the 53-route index repair:
+Characters with native FT2 mappings use their literal codepoints and corrected
+routes. Only `庞` needs an alias because the FT2 Unicode table has no native
+U+5E9E entry.
 
-- require input text counts `船=0`, `複=726`, `龐=42`, `庞=0`;
-- restore the 726 `複` occurrences to `船`;
-- encode the 42 `龐` occurrences as runtime `複`;
+After the 53-route index repair, produce the final runtime resources with these
+output invariants:
+
+- require output text counts `船=726`, `複=42`, `龐=0`, `庞=0`;
+- interpret the 42 runtime `複` codepoints exclusively as semantic `庞`;
 - require U+8907 to map to record 2631 and `船` to map to record 2403;
 - require record 2631 to be `(194, 3024, 59, 54)`;
 - modify only the proven atlas safe box `(200, 3030)-(248, 3073)`;
@@ -106,11 +115,17 @@ Run `tools/build_pang_alias_migration.py` only after the 53-route index repair:
 - preserve CSV byte length, FT2 metadata, the Unicode map, file size, and Oodle
   chunk boundaries.
 
-The verified candidate changes 77 BC3 blocks and 314 FT2 bytes relative to the
+The current private text checkpoint predates this final layout. As a compatibility
+adapter, `build_pang_alias_migration.py` accepts counts `船=0`, `複=726`,
+`龐=42`, `庞=0`, normalizes the 726 old ship aliases to literal `船`, and then
+encodes the 42 semantic `庞` values as runtime `複`. This input normalization is
+not part of the final design model.
+
+The verified final font changes 77 BC3 blocks and 314 FT2 bytes relative to the
 index-only font. Repacking changes Oodle chunks 339-342 without changing their
-stored sizes. The `船` path has been confirmed in game; the `庞` path has passed
-offline glyph and archive round-trip validation but has not yet been observed
-on an in-game screen by the tester.
+stored sizes. The corrected native mapping set has been confirmed in game; the
+`庞` path has passed offline glyph and archive round-trip validation but has not
+yet been observed on an in-game screen by the tester.
 
 ## Rejected approaches
 

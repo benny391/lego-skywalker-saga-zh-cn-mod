@@ -1,0 +1,11 @@
+{
+  "version": "2026.08.22",
+  "gameDirectory": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\LEGO Star Wars - The Skywalker Saga",
+  "stableRuntimeText": "inputs\\stuff\\text\\text.csv",
+  "stableReleaseFont": "inputs\\ui\\font\\localisation\\font_chinese_nxg.ft2",
+  "releaseFontBuildReport": "inputs\\font-report.json",
+  "notoFont": "C:\\Windows\\Fonts\\NotoSansSC-VF.ttf",
+  "oodleDll": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\LEGO Star Wars - The Skywalker Saga\\oo2core_8_win64.dll",
+  "workDirectory": "build\\v2026.08.22",
+  "outputDirectory": "dist"
+}
