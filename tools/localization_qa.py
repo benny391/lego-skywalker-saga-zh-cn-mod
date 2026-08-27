@@ -26,7 +26,11 @@ TOKEN_PATTERNS = {
     "angle_tags": re.compile(r"<[^<>\r\n]+>"),
     "square_tags": re.compile(r"\[/?[A-Za-z][^\]\r\n]*\]"),
     "double_square_refs": re.compile(r"\[\[[^\]\r\n]+\]\]"),
-    "tilde_markup": re.compile(r"~~|~[0-9A-Za-z_:#.+-]+"),
+    # TSS color/style controls are one digit (for example ``~7Luke~~``).
+    # The old expression greedily consumed the visible text after ``~7`` and
+    # therefore reported ordinary spelling edits such as C3PO -> C-3PO as a
+    # control-code change.
+    "tilde_markup": re.compile(r"~~|~[0-7]"),
     "escapes": re.compile(r"\\(?:[nrt0\\\"']|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4})"),
 }
 

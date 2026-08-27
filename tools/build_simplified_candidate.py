@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
 import io
@@ -154,10 +155,16 @@ def compact_spaces_to_exact_size(
 
 
 def main() -> None:
-    source_bytes = SOURCE.read_bytes()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", type=Path, default=SOURCE)
+    parser.add_argument("--glossary", type=Path, default=GLOSSARY)
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    parser.add_argument("--report", type=Path, default=REPORT)
+    args = parser.parse_args()
+    source_bytes = args.source.read_bytes()
     if source_bytes.startswith(b"\xef\xbb\xbf"):
         raise ValueError("Unexpected UTF-8 BOM")
-    with SOURCE.open("r", encoding="utf-8", newline="") as stream:
+    with args.source.open("r", encoding="utf-8", newline="") as stream:
         reader = csv.reader(stream, strict=True)
         header = next(reader)
         rows = list(reader)
@@ -167,7 +174,7 @@ def main() -> None:
         raise ValueError("Inconsistent CSV column count")
 
     language_index = header.index(LANGUAGE)
-    glossary = load_glossary(GLOSSARY)
+    glossary = load_glossary(args.glossary)
     converter = OpenCC("tw2sp")
     strict_simplifier = OpenCC("t2s")
     output_rows = [row.copy() for row in rows]
@@ -258,11 +265,11 @@ def main() -> None:
             raise ValueError(
                 f"Newline count changed during compaction on row {row_number}"
             )
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_bytes(output_bytes)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_bytes(output_bytes)
 
     # Reparse the emitted artifact rather than trusting only in-memory rows.
-    with OUTPUT.open("r", encoding="utf-8", newline="") as stream:
+    with args.output.open("r", encoding="utf-8", newline="") as stream:
         reparsed = list(csv.reader(stream, strict=True))
     if reparsed[0] != header or reparsed[1:] != output_rows:
         raise ValueError("Emitted CSV did not reparse exactly")
@@ -275,10 +282,10 @@ def main() -> None:
     before_chars = set("".join(before_values))
     after_chars = set("".join(after_values))
     report = {
-        "source": str(SOURCE),
-        "output": str(OUTPUT),
+        "source": str(args.source),
+        "output": str(args.output),
         "opencc": "tw2sp followed by t2s residual pass / OpenCC 1.1.9",
-        "glossary": str(GLOSSARY),
+        "glossary": str(args.glossary),
         "source_bytes": len(source_bytes),
         "output_bytes": len(output_bytes),
         "byte_delta_before_space_compaction": byte_excess,
@@ -309,7 +316,8 @@ def main() -> None:
         ],
         "samples": samples,
     }
-    REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({k: report[k] for k in (
         "source_bytes", "output_bytes", "byte_delta", "output_sha256", "rows",
         "changed_rows", "unchanged_rows", "empty_before", "empty_after",

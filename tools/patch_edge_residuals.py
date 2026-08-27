@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import io
 import json
@@ -30,10 +31,18 @@ def digest(data: bytes) -> str:
 
 
 def main() -> None:
-    source = SOURCE.read_bytes()
-    if not EXPECTED_SOURCE_SHA:
-        raise ValueError("Set TSS_EDGE_FIX_SOURCE_SHA256 to the verified input FT2 SHA-256")
-    if digest(source) != EXPECTED_SOURCE_SHA:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", type=Path, default=SOURCE)
+    parser.add_argument("--output-root", type=Path, default=OUTPUT_ROOT)
+    parser.add_argument("--expected-source-sha256", default=EXPECTED_SOURCE_SHA)
+    args = parser.parse_args()
+    output_path = args.output_root / "ui/font/localisation/font_chinese_nxg.ft2"
+    report_path = args.output_root / "dotfix-report.json"
+    source = args.source.read_bytes()
+    expected_source_sha = args.expected_source_sha256.upper()
+    if not expected_source_sha:
+        raise ValueError("Provide --expected-source-sha256 for the verified input FT2")
+    if digest(source) != expected_source_sha:
         raise ValueError("Preferred black-dot FT2 source hash changed")
     output = bytearray(source)
     dds_offset = source.index(b"DDS ")
@@ -108,8 +117,8 @@ def main() -> None:
     if len(output) != len(source):
         raise ValueError("FT2 size changed")
 
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_bytes(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(output)
     verified = Image.open(io.BytesIO(bytes(output)[dds_offset:])).convert("RGBA").getchannel("A")
     decoded_differences = []
     for py in range(atlas.height):
@@ -123,8 +132,8 @@ def main() -> None:
         raise ValueError("Not every requested residual pixel became transparent")
 
     report = {
-        "source": str(SOURCE),
-        "output": str(OUTPUT),
+        "source": str(args.source),
+        "output": str(output_path),
         "source_sha256": digest(source),
         "output_sha256": digest(output),
         "metadata_identical": True,
@@ -134,7 +143,7 @@ def main() -> None:
         "unexpected_decoded_pixels": 0,
         "targets": cleared,
     }
-    REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 
