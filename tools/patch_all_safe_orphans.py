@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import io
 import json
@@ -37,10 +38,18 @@ def gap(bbox: tuple[int, int, int, int], rect: tuple[int, int, int, int]) -> int
 
 
 def main() -> None:
-    source = SOURCE.read_bytes()
-    if not EXPECTED_SOURCE_SHA:
-        raise ValueError("Set TSS_ORPHAN_FIX_SOURCE_SHA256 to the verified input FT2 SHA-256")
-    if digest(source) != EXPECTED_SOURCE_SHA:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", type=Path, default=SOURCE)
+    parser.add_argument("--output-root", type=Path, default=OUTPUT_ROOT)
+    parser.add_argument("--expected-source-sha256", default=EXPECTED_SOURCE_SHA)
+    args = parser.parse_args()
+    output_path = args.output_root / "ui/font/localisation/font_chinese_nxg.ft2"
+    report_path = args.output_root / "orphan-fix-report.json"
+    source = args.source.read_bytes()
+    expected_source_sha = args.expected_source_sha256.upper()
+    if not expected_source_sha:
+        raise ValueError("Provide --expected-source-sha256 for the verified input FT2")
+    if digest(source) != expected_source_sha:
         raise ValueError("Surgical two-glyph source hash changed")
     output = bytearray(source)
     dds_offset = source.index(b"DDS ")
@@ -170,8 +179,8 @@ def main() -> None:
         raise ValueError("FT2 metadata changed")
     if output[map_offset : map_offset + len(pairs) * 4 + 4] != source[map_offset : map_offset + len(pairs) * 4 + 4]:
         raise ValueError("Unicode map changed")
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_bytes(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(output)
 
     verified = Image.open(io.BytesIO(bytes(output)[dds_offset:])).convert("RGBA").getchannel("A")
     differences = {
@@ -186,8 +195,8 @@ def main() -> None:
         )
 
     report = {
-        "source": str(SOURCE),
-        "output": str(OUTPUT),
+        "source": str(args.source),
+        "output": str(output_path),
         "source_sha256": digest(source),
         "output_sha256": digest(output),
         "mapping_unchanged": True,
@@ -202,7 +211,7 @@ def main() -> None:
         "preserved": preserved_components,
         "cleared": cleared_components,
     }
-    REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({key: value for key, value in report.items() if key not in {"preserved", "cleared"}}, ensure_ascii=False, indent=2))
 
 

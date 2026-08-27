@@ -2,9 +2,10 @@
 """Build the final runtime text/font layout with one dedicated alias for 庞.
 
 The final design stores 船 literally and routes it to its verified real glyph.
-Only semantic 庞 uses runtime U+8907/複 and glyph record 2631.  The current
-private input checkpoint still contains an obsolete 船-to-複 encoding, so this
-builder normalizes that input before emitting the final layout.
+Only semantic 庞 uses runtime U+8907/複 and glyph record 2631.  The input may be
+semantic Simplified text, semantic text retaining 龐, the historical private
+checkpoint, or already-normalized runtime text; every accepted layout is
+normalized to the same final representation.
 """
 
 from __future__ import annotations
@@ -52,17 +53,21 @@ def build_text(source_path: Path, output_path: Path) -> dict[str, object]:
         char: sum(value.count(char) for value in before)
         for char in (SHIP, ALIAS, TRAD_PANG, SIMP_PANG)
     }
-    expected = {SHIP: 0, ALIAS: 726, TRAD_PANG: 42, SIMP_PANG: 0}
-    if counts_before != expected:
-        raise ValueError(
-            f"Unexpected compatibility-checkpoint counts: {counts_before} != {expected}"
-        )
+    accepted = {
+        "legacy_ship_alias": {SHIP: 0, ALIAS: 726, TRAD_PANG: 42, SIMP_PANG: 0},
+        "semantic_traditional_pang": {SHIP: 726, ALIAS: 0, TRAD_PANG: 42, SIMP_PANG: 0},
+        "semantic_simplified_pang": {SHIP: 726, ALIAS: 0, TRAD_PANG: 0, SIMP_PANG: 42},
+        "final_runtime": {SHIP: 726, ALIAS: 42, TRAD_PANG: 0, SIMP_PANG: 0},
+    }
+    layout = next((name for name, counts in accepted.items() if counts_before == counts), None)
+    if layout is None:
+        raise ValueError(f"Unexpected semantic/runtime counts: {counts_before}")
 
     for row in rows[1:]:
         value = row[target_index]
-        # The order matters: old ship aliases become real 船 before 龐 is routed
-        # through the now-free alias codepoint.
-        row[target_index] = value.replace(ALIAS, SHIP).replace(TRAD_PANG, ALIAS)
+        if layout == "legacy_ship_alias":
+            value = value.replace(ALIAS, SHIP)
+        row[target_index] = value.replace(TRAD_PANG, ALIAS).replace(SIMP_PANG, ALIAS)
 
     stream = io.StringIO(newline="")
     csv.writer(stream, quoting=csv.QUOTE_ALL, lineterminator="\n").writerows(rows)
@@ -92,6 +97,7 @@ def build_text(source_path: Path, output_path: Path) -> dict[str, object]:
         "output_sha256": digest(output),
         "bytes": len(output),
         "rows": len(rows) - 1,
+        "input_layout": layout,
         "counts_before": {f"U+{ord(k):04X}": v for k, v in counts_before.items()},
         "counts_after": {f"U+{ord(k):04X}": v for k, v in counts_after.items()},
         "validator": validation,

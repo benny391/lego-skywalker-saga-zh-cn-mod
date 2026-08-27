@@ -1,165 +1,71 @@
 # Agent guidance
 
-This repository documents and builds a Simplified Chinese mod for the Steam
-version of **LEGO Star Wars: The Skywalker Saga**. Treat game archives, official
-localization data, extracted fonts, executables, and the game-supplied Oodle DLL
-as user-owned inputs. Never commit or redistribute them.
+This repository builds a Simplified Chinese mod for the Steam version of
+**LEGO Star Wars: The Skywalker Saga**. Game archives, official localization,
+extracted FT2 files, executables, and the Oodle DLL are user-owned inputs.
+Never commit or redistribute them.
 
-## Current accepted solution
+## Production model
 
-The accepted font solution is **Release atlas + index routing repair + one
-explicit runtime alias for 庞**.
+`build_mod.py` is the only production orchestrator. The Release Font must be
+built from the verified official FT2 plus the pinned Noto Sans SC font. Never
+accept `stableReleaseFont`, an extracted generated FT2, or an old font report as
+a production input.
 
-- Use the visually stable Release `font_chinese_nxg.ft2` as the font input.
-- Preserve the Release atlas except for the single U+8907 alias slot described
-  below. Its verified format is one `DXT5`/BC3 atlas of `3628 x 3824` pixels
-  with no mipmaps.
-- Repair only the big-endian `m_charIdx.m_index` fields in the FT2 Unicode map.
-- Repack with the original Oodle chunk count, sizes, and boundaries.
-- Do not redraw the complete atlas and do not recompress texture chunks.
-
-The stable index-only stage changes 53 deterministic routes. It changes 65
-bytes, all inside approved two-byte Unicode-map index fields, and leaves the DDS
-unchanged. Characters with native mappings use their literal Unicode codepoints
-and corrected routes. The 42 semantic `庞` occurrences are encoded as the
-otherwise-unused runtime codepoint U+8907 and displayed by record 2631, which is
-the only redrawn glyph slot.
-
-## Why 53 routes move
-
-The old Release font builder parsed FT2 v14 geometry four bytes late and also
-applied an incorrect three-record bias. For mapped glyph `g`, its drawing
-rectangle was effectively assembled from:
+Required font stages and SHA-256 values:
 
 ```text
-x      = records[g].u
-y      = records[g - 1].v
-width  = records[g - 1].width
-height = records[g - 1].height
+official       26E625B240BFB0DF8BB2EFF6557F6C87121E0DA069010B85ED97C18BB7495057
+rendered       E9BDE6B390417FDC0684CFCE1352AC05A33444CD4B27A8F0E4AE9365A8610FB0
+dotfix         4085FE30D148D073F1F834357DED1B25B386D3EDE63F4AE6055A80BB67464575
+edge-clean     511FCD2828C115766F13618ED17C17495C842B09858E74912F197E9B83A7605C
+index-fixed    76C0177657F873000A8C3D542CC09369F2404C633C45F2404CDA0B4DF9A762D7
+final          CD375749016E18CCB30682320606DDC7BB3F714516F09CF9A194920084C0A93B
 ```
 
-At shelf boundaries this places the rendered glyph in a different physical
-record, normally 55-59 indices earlier. `audit_release_geometry_routes.py`
-recovers the destination from the Release builder's recorded rendered-pixel
-box. A route is accepted only when exactly one correct FT2 record fully contains
-that box. This yields 3073 unique routes, zero destination collisions, and 53
-routes whose index actually needs changing.
+The recovered renderer intentionally reproduces the tested historical atlas:
+Noto Sans SC Regular 40 px, original legacy geometry interpretation,
+collision-split official ink footprints, centered proportional scaling,
+U+4E01/U+4EAB excluded, and binary threshold 96. This compatibility renderer
+is allowed only in `build_font_from_official.py`; structural analysis and route
+repair must use `ft2_v14.py`.
 
-Known examples:
+After rendering, run `patch_edge_residuals.py`,
+`patch_all_safe_orphans.py`, geometry audit, the 53-route index fix, and the
+single Pang alias stage in that order. Do not reintroduce the retired ship alias
+stage. `船` is native and only `庞` uses U+8907.
 
-```text
-失  824 -> 768
-控 1332 -> 1276
-維 2290 -> 2234   (display: 维)
-義 2346 -> 2290   (display: 义)
-運 2906 -> 2851   (display: 运)
-頂 3134 -> 3077   (display: 顶)
-```
+The from-scratch geometry report has these invariants: 3077 assignments, 3071
+unique full-containment routes, six ambiguous/partial assignments, zero target
+collisions. The route repair still changes exactly 53 routes and 65 bytes while
+leaving the DDS unchanged.
 
-`一`, `二`, and `日` are the three non-unique/partial geometry cases. Leave
-their Release mappings unchanged.
+## Text modes
+
+`textMode=import` accepts a locally supplied mature translation. `textMode=generate`
+extracts the official Traditional Chinese CSV and runs deterministic OpenCC plus
+the tracked glossary. Both must pass `localization_qa.py` and converge to the
+runtime layout `船=726`, `複=42`, `龐=0`, `庞=0`.
+
+Preserve IDs, row count, non-target columns, placeholders, format specifiers,
+tags, resource references, escapes, control characters, UTF-8 parseability, and
+the exact resource byte length.
 
 ## FT2 v14 facts
 
-Use `tools/ft2_v14.py`; do not restore the older parser.
-
-- Header magic: `TNFN`
-- Version: `14`
-- Character count offset: `47`
-- Character records offset: `51`
-- Character record stride: `28` bytes (`>7f`)
-- `m_charIdx.m_index` directly indexes `m_chars`; there is no glyph bias.
-- Unicode-map entries are sorted big-endian `>HH` pairs and terminate with
-  `FFFF FFFF`.
-
-## Required build and validation order
-
-For a complete production build, use the repository-root `build_mod.py`
-orchestrator. Individual tools remain useful for investigation, but a release
-must not bypass the orchestrator's pinned input hashes, stage invariants,
-full-resource extraction round-trip, target archive hashes, or package-content
-audit.
-
-1. Produce or select the stable Release FT2 from legally extracted user data.
-2. Run `tools/audit_release_geometry_routes.py` against the Release builder's
-   `all_han_inplace/font-report.json`.
-3. Require these audit invariants:
-   - 3076 assignments inspected;
-   - 3073 unique full-containment routes;
-   - three ambiguous/partial routes;
-   - zero target-record collisions.
-4. Run `tools/build_release_geometry_index_fix.py`.
-5. Require exactly 53 changed routes and only shelf shifts of 55-59 records.
-6. Require the DDS SHA-256 before and after to be identical.
-7. Require every changed byte to be inside an approved `m_charIdx` index field.
-8. Repack with `repack_oodle_resource.py --preserve-chunk-sizes
-   --pad-to-allocation` and verify by fully extracting the resource again.
-9. Never install while the game process is running. Keep the stable Release
-   archive as the immediate rollback file.
-
-## Final runtime encoding from first principles
-
-Characters with native FT2 mappings use their literal codepoints and corrected
-routes. Only `庞` needs an alias because the FT2 Unicode table has no native
-U+5E9E entry.
-
-After the 53-route index repair, produce the final runtime resources with these
-output invariants:
-
-- require output text counts `船=726`, `複=42`, `龐=0`, `庞=0`;
-- interpret the 42 runtime `複` codepoints exclusively as semantic `庞`;
-- require U+8907 to map to record 2631 and `船` to map to record 2403;
-- require record 2631 to be `(194, 3024, 59, 54)`;
-- modify only the proven atlas safe box `(200, 3030)-(248, 3073)`;
-- require all changed FT2 bytes to be BC3 alpha bytes in the selected blocks;
-- preserve CSV byte length, FT2 metadata, the Unicode map, file size, and Oodle
-  chunk boundaries.
-
-The current private text checkpoint predates this final layout. As a compatibility
-adapter, `build_pang_alias_migration.py` accepts counts `船=0`, `複=726`,
-`龐=42`, `庞=0`, normalizes the 726 old ship aliases to literal `船`, and then
-encodes the 42 semantic `庞` values as runtime `複`. This input normalization is
-not part of the final design model.
-
-The verified final font changes 77 BC3 blocks and 314 FT2 bytes relative to the
-index-only font. Repacking changes Oodle chunks 339-342 without changing their
-stored sizes. The corrected native mapping set has been confirmed in game; the
-`庞` path has passed offline glyph and archive round-trip validation but has not
-yet been observed on an in-game screen by the tester.
-
-## Rejected approaches
-
-Do not use these as the default or release path:
-
-- full-atlas Noto Sans SC redraw;
-- per-glyph BC3 texture rewrites for ordinary mapping errors;
-- dynamically rearranged Oodle chunk streams;
-- visual similarity alone to choose a glyph record;
-- the old `GEOMETRY_OFFSET = 111` / `GEOMETRY_GLYPH_BIAS = 3` parser.
-
-These approaches produced wrong glyphs, clipping, intermittent black lines, or
-startup failures in testing. The intermittent artifacts could also affect
-unchanged characters, so a successful single launch is not sufficient proof.
-
-## Localization safety
-
-For `text.csv` changes, preserve IDs, row count, non-target language columns,
-placeholders, format specifiers, tags, resource references, escape sequences,
-control characters, and CSV UTF-8 parseability. Run `localization_qa.py` before
-packaging.
-
-## Current coverage
-
-The final text needs 2956 unique Han characters and all 2956 now have a
-Simplified display path. Do not reuse U+8907 for another character: it is the
-runtime alias for `庞`, including the proper names `庞达·巴巴` and `庞沃卡`.
+- Header magic `TNFN`, version 14.
+- Character count offset 47; records offset 51; stride 28 (`>7f`).
+- Unicode entries are big-endian `>HH` and terminate with `FFFF FFFF`.
+- `m_charIdx.m_index` directly indexes `m_chars`.
+- Final U+8907 maps to record 2631; `船` maps to record 2403.
+- Pang record is `(194,3024,59,54)` and the only writable box is
+  `(200,3030)-(248,3073)`.
 
 ## Repository hygiene
 
-- Never add complete DAT files, FT2/DDS files, official CSV data, EXEs, DLLs,
-  generated archives, or binary patches tied to copyrighted inputs.
-- Keep source paths configurable; do not commit local absolute paths as public
-  defaults unless they are conventional Windows font/game locations and clearly
-  documented as examples.
+- Never add complete DAT, FT2/DDS, official CSV, EXE, DLL, or generated archive files.
+- Keep local paths configurable and keep private inputs under ignored directories.
+- Preserve Oodle chunk count, sizes, and boundaries.
+- Never modify the live game installation during a build.
 - Stage only files relevant to the requested change.
 

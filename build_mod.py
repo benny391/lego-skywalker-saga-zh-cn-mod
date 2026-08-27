@@ -37,14 +37,26 @@ VERIFIED = {
         "source": "1DF529C6532324545581CE6144321991FEEDF046BD9F06F024239518015650CF",
         "target": "224E4A677F7941774D26D5AF62CDEEDE9398F683A7C33BE693608FBD3771DD7E",
     },
-    "stableRuntimeText": {
-        "sha256": "9AB6897D2302584A88EDDB2F37D2D98D662D3419A5E982075B47EB084C24DECC"
+    "officialRuntimeText": {
+        "size": 37_203_703,
+        "sha256": "74FBFD207D21A9D0D141D055CE93DD241F6F81BD8E3033207EF600B1B557B3D3",
     },
-    "stableReleaseFont": {
-        "sha256": "F3D7043BF85203A7957C2BD59CD835E48D3CCFFB170DC6498583D23B2BF047D2"
+    "officialReleaseFont": {
+        "size": 13_979_024,
+        "sha256": "26E625B240BFB0DF8BB2EFF6557F6C87121E0DA069010B85ED97C18BB7495057",
     },
-    "releaseFontBuildReport": {
-        "sha256": "D824961496BA1F1DE4743E7ACE5710E0A08C2D4CB4A018794B4FAF3FF3F86C12"
+    "notoSansScVariable": {
+        "sha256": "763146584CF0710223441356B4395E279021B0806C196614377A7A0174AE074A"
+    },
+    "releaseFontStages": {
+        "rendered": "E9BDE6B390417FDC0684CFCE1352AC05A33444CD4B27A8F0E4AE9365A8610FB0",
+        "dotfix": "4085FE30D148D073F1F834357DED1B25B386D3EDE63F4AE6055A80BB67464575",
+        "edgeClean": "511FCD2828C115766F13618ED17C17495C842B09858E74912F197E9B83A7605C",
+        "indexFixed": "76C0177657F873000A8C3D542CC09369F2404C633C45F2404CDA0B4DF9A762D7",
+        "final": "CD375749016E18CCB30682320606DDC7BB3F714516F09CF9A194920084C0A93B",
+    },
+    "finalRuntimeText": {
+        "sha256": "EBE14CC8139E83FCB0E80909642F4529217F73E6CD93E7AC7026387097C203D0"
     },
 }
 
@@ -67,15 +79,17 @@ def load_config(path: Path) -> dict[str, object]:
     required = (
         "version",
         "gameDirectory",
-        "stableRuntimeText",
-        "stableReleaseFont",
-        "releaseFontBuildReport",
         "workDirectory",
         "outputDirectory",
     )
     missing = [key for key in required if not raw.get(key)]
     if missing:
         raise ValueError(f"Missing configuration fields: {', '.join(missing)}")
+    mode = str(raw.get("textMode", "import"))
+    if mode not in {"import", "generate"}:
+        raise ValueError(f"Unsupported textMode: {mode}")
+    if mode == "import" and not raw.get("translatedText"):
+        raise ValueError("textMode=import requires translatedText")
     return raw
 
 
@@ -120,9 +134,9 @@ def prepare_work_directory(path: Path, clean: bool) -> None:
 def check_audit(path: Path) -> None:
     summary = json.loads(path.read_text(encoding="utf-8"))["summary"]
     expected = {
-        "assignment_count": 3076,
-        "unique_full_containment": 3073,
-        "ambiguous_or_partial": 3,
+        "assignment_count": 3077,
+        "unique_full_containment": 3071,
+        "ambiguous_or_partial": 6,
         "target_record_collisions": 0,
     }
     for key, value in expected.items():
@@ -147,8 +161,10 @@ def check_pang_migration(path: Path) -> None:
     font = report["font"]
     if font["ship_index"] != 2403 or font["alias_index"] != 2631:
         raise ValueError("Final 船/庞 glyph routes do not match the verified mapping")
-    if font["changed_bc3_blocks"] != 77 or font["changed_byte_count"] != 314:
-        raise ValueError("Final 庞 glyph edit escaped the verified BC3 change set")
+    if font["changed_bc3_blocks"] != 79 or font["changed_byte_count"] != 328:
+        raise ValueError("Final 庞 glyph edit escaped the from-scratch Release change set")
+    if not font["metadata_unchanged"] or not font["unicode_map_unchanged"]:
+        raise ValueError("Final 庞 edit changed FT2 metadata or Unicode routing")
     if not report["text"]["validator"]["valid"]:
         raise ValueError("Final localization structure validation failed")
 
@@ -199,6 +215,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=ROOT / "build-config.json")
     parser.add_argument("--check-only", action="store_true", help="validate all inputs without building")
+    parser.add_argument(
+        "--font-only",
+        action="store_true",
+        help="build and audit the Release Font, but never create DAT patches",
+    )
     parser.add_argument("--clean", action="store_true", help="remove only a previously marked build directory")
     args = parser.parse_args()
 
@@ -206,10 +227,12 @@ def main() -> None:
     config = load_config(config_path)
     config_base = config_path.parent
     version = str(config["version"])
+    text_mode = str(config.get("textMode", "import"))
     game = resolve_path(str(config["gameDirectory"]), config_base)
-    stable_text = resolve_path(str(config["stableRuntimeText"]), config_base)
-    stable_font = resolve_path(str(config["stableReleaseFont"]), config_base)
-    build_report = resolve_path(str(config["releaseFontBuildReport"]), config_base)
+    translated_text = (
+        resolve_path(str(config["translatedText"]), config_base)
+        if config.get("translatedText") else None
+    )
     work = resolve_path(str(config["workDirectory"]), config_base)
     output_dir = resolve_path(str(config["outputDirectory"]), config_base)
     noto = resolve_path(
@@ -229,16 +252,24 @@ def main() -> None:
     require_file(TOOLS / "repack_zipx_resource.py", "ZIPX repack tool")
     require_file(TOOLS / "repack_oodle_resource.py", "Oodle repack tool")
     require_file(TOOLS / "build_binary_patch.py", "binary patch tool")
+    require_file(TOOLS / "extract_resource.py", "resource extraction tool")
+    require_file(TOOLS / "build_font_from_official.py", "from-official font builder")
+    require_file(TOOLS / "patch_edge_residuals.py", "edge residual repair tool")
+    require_file(TOOLS / "patch_all_safe_orphans.py", "orphan cleanup tool")
+    require_file(TOOLS / "build_simplified_candidate.py", "from-zero text builder")
     require_file(noto, "Noto Sans SC font")
     require_file(oodle, "game-supplied Oodle DLL")
     require_file(LICENSE, "Noto Sans CJK license")
     verify_exact(official_game, "official GAME.DAT", VERIFIED["GAME.DAT"]["source"], VERIFIED["GAME.DAT"]["size"])
     verify_exact(official_game6, "official GAME6.DAT", VERIFIED["GAME6.DAT"]["source"], VERIFIED["GAME6.DAT"]["size"])
-    verify_exact(stable_text, "stable runtime text", VERIFIED["stableRuntimeText"]["sha256"])
-    verify_exact(stable_font, "stable Release font", VERIFIED["stableReleaseFont"]["sha256"])
-    verify_exact(build_report, "Release font build report", VERIFIED["releaseFontBuildReport"]["sha256"])
+    verify_exact(noto, "Noto Sans SC Variable", VERIFIED["notoSansScVariable"]["sha256"])
+    if translated_text is not None:
+        require_file(translated_text, "translated text import")
+        expected_import_hash = str(config.get("translatedTextSha256", "")).upper()
+        if expected_import_hash:
+            verify_exact(translated_text, "translated text import", expected_import_hash)
     if args.check_only:
-        print("\nAll inputs match the verified v2026.08.22 recipe.")
+        print(f"\nAll inputs required by textMode={text_mode} are present and verified.")
         return
 
     zip_path = output_dir / f"lego-skywalker-saga-zh-cn-mod_v{version}.zip"
@@ -253,29 +284,108 @@ def main() -> None:
     audit = work / "reports/release-index-geometry-audit.json"
     index_root = work / "index-fix"
     final_root = work / "final-resources"
+    extracted_text = work / "extracted" / RESOURCE_TEXT
+    extracted_font = work / "extracted" / RESOURCE_FONT
+    run_tool(
+        "extract_resource.py",
+        official_game, RESOURCE_TEXT, extracted_text,
+        "--expected-sha256", VERIFIED["officialRuntimeText"]["sha256"],
+        "--report", work / "reports/official-text-extraction.json",
+    )
+    run_tool(
+        "extract_resource.py",
+        official_game6, RESOURCE_FONT, extracted_font,
+        "--oodle-dll", oodle,
+        "--expected-sha256", VERIFIED["officialReleaseFont"]["sha256"],
+        "--report", work / "reports/official-font-extraction.json",
+    )
+
+    semantic_text = work / "semantic-text" / RESOURCE_TEXT
+    if text_mode == "import":
+        assert translated_text is not None
+        run_tool("localization_qa.py", "compare", extracted_text, translated_text)
+        semantic_text.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(translated_text, semantic_text)
+    else:
+        glossary = resolve_path(
+            str(config.get("glossary", ROOT / "recipe/mainland_glossary.tsv")), config_base
+        )
+        require_file(glossary, "Mainland terminology glossary")
+        run_tool(
+            "build_simplified_candidate.py",
+            "--source", extracted_text,
+            "--glossary", glossary,
+            "--output", semantic_text,
+            "--report", work / "reports/generated-text.json",
+        )
+        run_tool("localization_qa.py", "compare", extracted_text, semantic_text)
+
+    rendered_root = work / "font-rendered"
+    run_tool(
+        "build_font_from_official.py",
+        "--official-ft2", extracted_font,
+        "--noto", noto,
+        "--output-root", rendered_root,
+    )
+    rendered_font = rendered_root / RESOURCE_FONT
+    verify_exact(
+        rendered_font, "from-scratch rendered font",
+        VERIFIED["releaseFontStages"]["rendered"], VERIFIED["officialReleaseFont"]["size"],
+    )
+    dotfix_root = work / "font-dotfix"
+    run_tool(
+        "patch_edge_residuals.py",
+        "--source", rendered_font,
+        "--output-root", dotfix_root,
+        "--expected-source-sha256", VERIFIED["releaseFontStages"]["rendered"],
+    )
+    dotfix_font = dotfix_root / RESOURCE_FONT
+    verify_exact(dotfix_font, "edge-dot-fixed font", VERIFIED["releaseFontStages"]["dotfix"])
+    clean_root = work / "font-edge-clean"
+    run_tool(
+        "patch_all_safe_orphans.py",
+        "--source", dotfix_font,
+        "--output-root", clean_root,
+        "--expected-source-sha256", VERIFIED["releaseFontStages"]["dotfix"],
+    )
+    font_source = clean_root / RESOURCE_FONT
+    verify_exact(font_source, "edge-clean Release atlas", VERIFIED["releaseFontStages"]["edgeClean"])
+    report_source = rendered_root / "font-report.json"
     run_tool(
         "audit_release_geometry_routes.py",
-        "--font", stable_font,
-        "--build-report", build_report,
+        "--font", font_source,
+        "--build-report", report_source,
         "--output", audit,
     )
     check_audit(audit)
     run_tool(
         "build_release_geometry_index_fix.py",
-        "--base", stable_font,
+        "--base", font_source,
         "--audit", audit,
         "--output-root", index_root,
         "--noto", noto,
     )
     check_index_fix(index_root / "index-fix-report.json")
+    verify_exact(
+        index_root / RESOURCE_FONT, "index-fixed Release atlas",
+        VERIFIED["releaseFontStages"]["indexFixed"],
+    )
     run_tool(
         "build_pang_alias_migration.py",
-        "--text-source", stable_text,
+        "--text-source", semantic_text,
         "--font-source", index_root / RESOURCE_FONT,
         "--output-root", final_root,
         "--noto", noto,
     )
     check_pang_migration(final_root / "pang-alias-report.json")
+    final_font = final_root / RESOURCE_FONT
+    verify_exact(
+        final_font, "from-scratch final Release Font",
+        VERIFIED["releaseFontStages"]["final"], VERIFIED["officialReleaseFont"]["size"],
+    )
+    if args.font_only:
+        print("\nRelease Font completed from the official FT2; DAT packaging was skipped.")
+        return
 
     archives = work / "archives"
     archives.mkdir(parents=True)
@@ -293,9 +403,14 @@ def main() -> None:
         official_game6, mod_game6, RESOURCE_FONT, final_root / RESOURCE_FONT, oodle,
         "--preserve-chunk-sizes", "--pad-to-allocation",
     )
-    target_game_hash = verify_exact(
-        mod_game, "generated GAME.DAT", VERIFIED["GAME.DAT"]["target"], VERIFIED["GAME.DAT"]["size"]
-    )
+    if mod_game.stat().st_size != VERIFIED["GAME.DAT"]["size"]:
+        raise ValueError("Generated GAME.DAT size changed")
+    target_game_hash = sha256(mod_game)
+    expected_game_target = str(config.get("expectedTargetGameDatSha256", "")).upper()
+    if not expected_game_target and sha256(final_root / RESOURCE_TEXT) == VERIFIED["finalRuntimeText"]["sha256"]:
+        expected_game_target = VERIFIED["GAME.DAT"]["target"]
+    if expected_game_target and target_game_hash != expected_game_target:
+        raise ValueError(f"Generated GAME.DAT hash changed: {target_game_hash} != {expected_game_target}")
     target_game6_hash = verify_exact(
         mod_game6, "generated GAME6.DAT", VERIFIED["GAME6.DAT"]["target"], VERIFIED["GAME6.DAT"]["size"]
     )
@@ -349,7 +464,11 @@ def main() -> None:
     write_checksums(package)
     make_zip(package, zip_path)
     result = {
-        "recipe": "verified-v2026.08.22",
+        "recipe": "release-font-from-official-v1",
+        "textMode": text_mode,
+        "semanticTextSha256": sha256(semantic_text),
+        "runtimeTextSha256": sha256(final_root / RESOURCE_TEXT),
+        "releaseFontSha256": sha256(final_font),
         "version": version,
         "zip": str(zip_path),
         "zip_sha256": sha256(zip_path),
